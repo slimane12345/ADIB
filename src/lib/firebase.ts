@@ -18,6 +18,20 @@ if (!firebaseConfig.apiKey) {
   console.error("Firebase API Key is missing! Please set VITE_FIREBASE_API_KEY in your environment variables.");
 }
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+let app;
+let auth: any;
+let db: any;
+
+try {
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } else {
+    console.warn("Firebase configuration is missing or using placeholders. Auth and Firestore will not be initialized.");
+  }
+} catch (error) {
+  console.error("Firebase initialization failed:", error);
+}
+
+export { auth, db };

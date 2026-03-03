@@ -75,6 +75,12 @@ export default function App() {
 
   // Firebase Auth State
   React.useEffect(() => {
+    if (!auth) {
+      setLoadingUser(false);
+      setError("إعدادات Firebase مفقودة. يرجى ضبط VITE_FIREBASE_API_KEY في إعدادات Vercel.");
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {

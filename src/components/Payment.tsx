@@ -12,6 +12,8 @@ import {
   Loader2,
   FileText
 } from 'lucide-react';
+import { doc, getDoc, addDoc, collection } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 
 interface PaymentProps {
   onBack: () => void;
@@ -30,10 +32,17 @@ export default function Payment({ onBack, userEmail }: PaymentProps) {
   });
 
   React.useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => setSettings(data))
-      .catch(err => console.error("Failed to fetch settings:", err));
+    const fetchSettings = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, 'settings', 'payment'));
+        if (settingsDoc.exists()) {
+          setSettings(settingsDoc.data() as any);
+        }
+      } catch (err) {
+        console.error("Failed to fetch settings:", err);
+      }
+    };
+    fetchSettings();
   }, []);
 
   const handleCopy = (text: string, key: string) => {
@@ -43,18 +52,17 @@ export default function Payment({ onBack, userEmail }: PaymentProps) {
   };
 
   const handleSubmit = async () => {
-    const token = localStorage.getItem('adib_token');
-    if (!token) return;
+    if (!auth.currentUser) return;
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/payment/request', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+      await addDoc(collection(db, 'payment_requests'), {
+        user_id: auth.currentUser.uid,
+        email: auth.currentUser.email,
+        status: 'pending',
+        created_at: new Date().toISOString()
       });
-      if (res.ok) {
-        setSubmitted(true);
-      }
+      setSubmitted(true);
     } catch (err) {
       console.error("Failed to submit payment request:", err);
     } finally {

@@ -32,9 +32,9 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import Dashboard from './components/Dashboard';
-import Auth from './components/Auth';
-import Payment from './components/Payment';
+import { auth, db } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, updateDoc, increment, collection, addDoc } from 'firebase/firestore';
 
 // Types
 interface User {
@@ -59,7 +59,7 @@ interface AdOutput {
 export default function App() {
   const [view, setView] = useState<'generator' | 'dashboard' | 'pricing' | 'auth' | 'payment'>('generator');
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('adib_token'));
+  const [loadingUser, setLoadingUser] = useState(true);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -70,60 +70,55 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch user data on mount or token change
+  // Firebase Auth State
   React.useEffect(() => {
-    if (token) {
-      fetchUser();
-    } else {
-      setUser(null);
-      setView('auth');
-    }
-  }, [token]);
-
-  const fetchUser = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch('/api/user', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.status === 401) {
-        handleLogout();
-        return;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Fetch user profile from Firestore
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (userDoc.exists()) {
+          setUser(userDoc.data() as User);
+        } else {
+          // Fallback if doc doesn't exist yet
+          setUser({
+            email: firebaseUser.email || '',
+            credits: 5,
+            isPro: false,
+            isAdmin: firebaseUser.email === 'elegancecom71@gmail.com'
+          });
+        }
+        setView('generator');
+      } else {
+        setUser(null);
+        setView('auth');
       }
-      const data = await res.json();
-      setUser(data);
-    } catch (err) {
-      console.error("Failed to fetch user:", err);
-    }
-  };
+      setLoadingUser(false);
+    });
 
-  const handleAuthSuccess = (newToken: string) => {
-    localStorage.setItem('adib_token', newToken);
-    setToken(newToken);
+    return () => unsubscribe();
+  }, []);
+
+  const handleAuthSuccess = () => {
     setView('generator');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('adib_token');
-    setToken(null);
+  const handleLogout = async () => {
+    await signOut(auth);
     setUser(null);
     setView('auth');
   };
 
   const upgradeToPro = async () => {
-    if (!token) return;
+    if (!auth.currentUser) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/upgrade', { 
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUser(data.user);
-        setView('generator');
-        setShowUpgradeModal(false);
-      }
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      await updateDoc(userRef, { isPro: true });
+      
+      // Update local state
+      setUser(prev => prev ? { ...prev, isPro: true } : null);
+      setView('generator');
+      setShowUpgradeModal(false);
     } catch (err) {
       console.error("Upgrade failed:", err);
     } finally {
@@ -253,21 +248,26 @@ export default function App() {
       const result = JSON.parse(response.text || '[]');
       setOutputs(Array.isArray(result) ? result : [result]);
 
-      // Deduct credit after successful generation
-      const creditRes = await fetch('/api/use-credit', { 
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          productName: formData.name,
-          category: formData.category
-        })
-      });
-      const creditData = await creditRes.json();
-      if (creditData.success) {
-        setUser(prev => prev ? { ...prev, credits: creditData.credits } : null);
+      // Deduct credit and save activity in Firestore
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        
+        if (!user?.isPro) {
+          await updateDoc(userRef, {
+            credits: increment(-1)
+          });
+          // Update local state
+          setUser(prev => prev ? { ...prev, credits: prev.credits - 1 } : null);
+        }
+
+        // Save to activity log
+        await addDoc(collection(db, 'ads_generated'), {
+          userId: auth.currentUser.uid,
+          email: auth.currentUser.email,
+          product_name: formData.name,
+          category: formData.category,
+          created_at: new Date().toISOString()
+        });
       }
     } catch (err) {
       console.error(err);
@@ -284,6 +284,14 @@ export default function App() {
   };
 
   const currentOutput = outputs[activeVersion];
+
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+        <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 selection:bg-emerald-100 selection:text-emerald-900">

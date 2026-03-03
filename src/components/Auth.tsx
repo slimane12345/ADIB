@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 interface AuthProps {
-  onAuthSuccess: (token: string) => void;
+  onAuthSuccess: () => void;
 }
 
 export default function Auth({ onAuthSuccess }: AuthProps) {
@@ -18,24 +24,38 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     setLoading(true);
     setError(null);
 
-    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-    
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        onAuthSuccess(data.token);
+      if (isLogin) {
+        // Firebase Login
+        await signInWithEmailAndPassword(auth, email, password);
+        onAuthSuccess();
       } else {
-        setError(data.message || 'حدث خطأ ما. حاول مرة أخرى.');
+        // Firebase Register
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Create user profile in Firestore
+        await setDoc(doc(db, 'users', user.uid), {
+          email: user.email,
+          credits: 5,
+          isPro: false,
+          isAdmin: user.email === 'elegancecom71@gmail.com', // Set admin based on email
+          createdAt: new Date().toISOString()
+        });
+        
+        onAuthSuccess();
       }
-    } catch (err) {
-      setError('مشكل في الاتصال بالخادم.');
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('هذا البريد الإلكتروني مستخدم بالفعل.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('كلمة المرور ضعيفة جداً.');
+      } else {
+        setError('حدث خطأ ما. حاول مرة أخرى.');
+      }
     } finally {
       setLoading(false);
     }

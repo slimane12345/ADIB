@@ -36,6 +36,19 @@ import {
   BarChart,
   Bar
 } from 'recharts';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy, 
+  limit,
+  getDoc,
+  setDoc
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface AdminStats {
   totalUsers: number;
@@ -45,15 +58,15 @@ interface AdminStats {
 }
 
 interface User {
-  id: number;
+  id: string; // Firebase UID
   email: string;
   credits: number;
-  is_pro: number;
-  is_admin: number;
+  isPro: boolean;
+  isAdmin: boolean;
 }
 
 interface Activity {
-  id: number;
+  id: string;
   email: string;
   product_name: string;
   category: string;
@@ -61,8 +74,8 @@ interface Activity {
 }
 
 interface PaymentRequest {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   email: string;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
@@ -93,7 +106,7 @@ export default function Dashboard({ setView }: { setView: (v: string) => void })
   const [users, setUsers] = useState<User[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState<number | null>(null);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<User>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'requests' | 'settings'>('overview');
@@ -106,28 +119,47 @@ export default function Dashboard({ setView }: { setView: (v: string) => void })
     whatsapp_number: ''
   });
 
-  const token = localStorage.getItem('adib_token');
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [statsRes, usersRes, settingsRes, requestsRes] = await Promise.all([
-        fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/settings'),
-        fetch('/api/admin/payment-requests', { headers: { 'Authorization': `Bearer ${token}` } })
-      ]);
-      
-      const statsData = await statsRes.json();
-      const usersData = await usersRes.json();
-      const settingsData = await settingsRes.json();
-      const requestsData = await requestsRes.json();
+      // Fetch Users
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      setUsers(usersList);
 
-      setStats(statsData.stats);
-      setActivity(statsData.recentActivity);
-      setUsers(usersData.users);
-      setPaymentSettings(settingsData);
-      setPaymentRequests(requestsData.requests || []);
+      // Fetch Activity
+      const activityQuery = query(collection(db, 'ads_generated'), orderBy('created_at', 'desc'), limit(10));
+      const activitySnapshot = await getDocs(activityQuery);
+      const activityList = activitySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
+      setActivity(activityList);
+
+      // Fetch Payment Requests
+      const requestsSnapshot = await getDocs(query(collection(db, 'payment_requests'), orderBy('created_at', 'desc')));
+      const requestsList = requestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentRequest));
+      setPaymentRequests(requestsList);
+
+      // Fetch Settings
+      const settingsDoc = await getDoc(doc(db, 'settings', 'payment'));
+      if (settingsDoc.exists()) {
+        setPaymentSettings(settingsDoc.data() as any);
+      }
+
+      // Calculate Stats
+      const totalAdsSnapshot = await getDocs(collection(db, 'ads_generated'));
+      const today = new Date().toISOString().split('T')[0];
+      const adsToday = totalAdsSnapshot.docs.filter(doc => (doc.data().created_at as string).startsWith(today)).length;
+
+      setStats({
+        totalUsers: usersList.length,
+        totalAds: totalAdsSnapshot.docs.length,
+        proUsers: usersList.filter(u => u.isPro).length,
+        adsToday
+      });
+
     } catch (err) {
       console.error("Failed to fetch admin data:", err);
     } finally {
@@ -140,134 +172,66 @@ export default function Dashboard({ setView }: { setView: (v: string) => void })
   }, []);
 
   const handleExportUsers = async () => {
-    setActionLoading('export_users');
-    try {
-      const res = await fetch('/api/admin/export/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'users_export.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (err) {
-      alert('فشل تصدير البيانات');
-    } finally {
-      setActionLoading(null);
-    }
+    // Client-side export
+    const csv = [
+      ['Email', 'Credits', 'Is Pro', 'Is Admin'],
+      ...users.map(u => [u.email, u.credits, u.isPro, u.isAdmin])
+    ].map(e => e.join(",")).join("\n");
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'users_export.csv';
+    a.click();
   };
 
   const handleDownloadReport = async () => {
-    setActionLoading('report');
-    try {
-      const res = await fetch('/api/admin/export/report', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'platform_report.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (err) {
-      alert('فشل تحميل التقرير');
-    } finally {
-      setActionLoading(null);
-    }
+    alert('هذه الميزة غير متوفرة حالياً في نسخة Firebase.');
   };
 
   const handleCleanup = async () => {
-    if (!confirm('واش بغيتي تمسح الحسابات غير الصالحة؟')) return;
-    setActionLoading('cleanup');
-    try {
-      const res = await fetch('/api/admin/cleanup', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      alert(`تم مسح ${data.deletedCount} حساب بنجاح.`);
-      fetchData();
-    } catch (err) {
-      alert('فشل تنظيف البيانات');
-    } finally {
-      setActionLoading(null);
-    }
+    alert('هذه الميزة غير متوفرة حالياً في نسخة Firebase.');
   };
 
   const handleBroadcast = async () => {
-    const message = prompt('اكتب الرسالة اللي بغيتي ترسلها لجميع المستخدمين:');
-    if (!message) return;
-    setActionLoading('broadcast');
-    try {
-      await fetch('/api/admin/broadcast', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ message })
-      });
-      alert('تم إرسال الرسالة بنجاح (راجع سجلات الخادم).');
-    } catch (err) {
-      alert('فشل إرسال الرسالة');
-    } finally {
-      setActionLoading(null);
-    }
+    alert('هذه الميزة غير متوفرة حالياً في نسخة Firebase.');
   };
 
-  const handleUpdateUser = async (id: number) => {
+  const handleUpdateUser = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/users/${id}/update`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(editData)
-      });
-      if (res.ok) {
-        setEditingUser(null);
-        fetchData();
-      }
+      await updateDoc(doc(db, 'users', id), editData);
+      setEditingUser(null);
+      fetchData();
     } catch (err) {
       console.error("Failed to update user:", err);
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: string) => {
     if (!confirm('واش متأكد بغيتي تمسح هاد المستخدم؟ هاد العملية مافيهاش الرجوع.')) return;
     try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchData();
-      }
+      await deleteDoc(doc(db, 'users', id));
+      fetchData();
     } catch (err) {
       console.error("Failed to delete user:", err);
     }
   };
 
-  const handlePaymentAction = async (id: number, action: 'approve' | 'reject') => {
+  const handlePaymentAction = async (id: string, action: 'approve' | 'reject') => {
     setActionLoading(`payment_${id}`);
     try {
-      const res = await fetch(`/api/admin/payment-request/${id}/action`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ action })
-      });
-      if (res.ok) {
-        fetchData();
+      const request = paymentRequests.find(r => r.id === id);
+      if (!request) return;
+
+      if (action === 'approve') {
+        // Upgrade user to Pro
+        await updateDoc(doc(db, 'users', request.user_id), { isPro: true });
+        await updateDoc(doc(db, 'payment_requests', id), { status: 'approved' });
+      } else {
+        await updateDoc(doc(db, 'payment_requests', id), { status: 'rejected' });
       }
+      fetchData();
     } catch (err) {
       alert('فشل تنفيذ الإجراء');
     } finally {
@@ -279,17 +243,8 @@ export default function Dashboard({ setView }: { setView: (v: string) => void })
     e.preventDefault();
     setActionLoading('update_settings');
     try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(paymentSettings)
-      });
-      if (res.ok) {
-        alert('تم تحديث الإعدادات بنجاح');
-      }
+      await setDoc(doc(db, 'settings', 'payment'), paymentSettings);
+      alert('تم تحديث الإعدادات بنجاح');
     } catch (err) {
       alert('فشل تحديث الإعدادات');
     } finally {

@@ -210,7 +210,14 @@ export default function App() {
     setActiveVersion(0);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        setError("مفتاح Gemini API مفقود. يرجى ضبط GEMINI_API_KEY في إعدادات Vercel.");
+        setLoading(false);
+        return;
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       const model = "gemini-3-flash-preview";
       
       const textPart = {
@@ -297,9 +304,17 @@ export default function App() {
           created_at: new Date().toISOString()
         });
       }
-    } catch (err) {
-      console.error(err);
-      setError("وقع مشكل فالاتصال. حاول مرة أخرى.");
+    } catch (err: any) {
+      console.error("Generation Error:", err);
+      if (err.message?.includes("API key not valid")) {
+        setError("مفتاح API غير صالح. تأكد من GEMINI_API_KEY في Vercel.");
+      } else if (err.message?.includes("quota")) {
+        setError("وصلتي للحد الأقصى ديال الاستخدام (Quota Exceeded).");
+      } else if (err.message?.includes("safety")) {
+        setError("المحتوى تم حظره بسبب سياسات السلامة.");
+      } else {
+        setError(`وقع مشكل: ${err.message || "حاول مرة أخرى."}`);
+      }
     } finally {
       setLoading(false);
     }

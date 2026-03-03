@@ -76,26 +76,33 @@ export default function App() {
   // Firebase Auth State
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Fetch user profile from Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUser(userDoc.data() as User);
+      try {
+        if (firebaseUser) {
+          // Fetch user profile from Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser(userDoc.data() as User);
+          } else {
+            // Fallback if doc doesn't exist yet
+            setUser({
+              email: firebaseUser.email || '',
+              credits: 5,
+              isPro: false,
+              isAdmin: firebaseUser.email === 'elegancecom71@gmail.com'
+            });
+          }
+          setView('generator');
         } else {
-          // Fallback if doc doesn't exist yet
-          setUser({
-            email: firebaseUser.email || '',
-            credits: 5,
-            isPro: false,
-            isAdmin: firebaseUser.email === 'elegancecom71@gmail.com'
-          });
+          setUser(null);
+          setView('auth');
         }
-        setView('generator');
-      } else {
+      } catch (err) {
+        console.error("Auth state change error:", err);
         setUser(null);
         setView('auth');
+      } finally {
+        setLoadingUser(false);
       }
-      setLoadingUser(false);
     });
 
     return () => unsubscribe();

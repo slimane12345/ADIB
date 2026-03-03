@@ -28,7 +28,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       if (isLogin) {
         // Firebase Login
         await signInWithEmailAndPassword(auth, email, password);
-        onAuthSuccess();
+        // onAuthSuccess will be handled by onAuthStateChanged in App.tsx
       } else {
         // Firebase Register
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -43,18 +43,23 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           createdAt: new Date().toISOString()
         });
         
-        onAuthSuccess();
+        // onAuthSuccess will be handled by onAuthStateChanged in App.tsx
       }
     } catch (err: any) {
-      console.error("Auth error:", err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      console.error("Full Auth Error Object:", err);
+      console.error("Auth error code:", err.code);
+      console.error("Auth error message:", err.message);
+      
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('هذا البريد الإلكتروني مستخدم بالفعل.');
       } else if (err.code === 'auth/weak-password') {
         setError('كلمة المرور ضعيفة جداً.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('مشكل في الاتصال بالإنترنت. حاول مرة أخرى.');
       } else {
-        setError('حدث خطأ ما. حاول مرة أخرى.');
+        setError(`خطأ: ${err.message || 'حدث خطأ ما. حاول مرة أخرى.'}`);
       }
     } finally {
       setLoading(false);

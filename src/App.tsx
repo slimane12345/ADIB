@@ -35,6 +35,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc, increment, collection, addDoc } from 'firebase/firestore';
+import Dashboard from './components/Dashboard';
+import Auth from './components/Auth';
+import Payment from './components/Payment';
 
 // Types
 interface User {
@@ -100,6 +103,18 @@ export default function App() {
 
   const handleAuthSuccess = () => {
     setView('generator');
+  };
+
+  const fetchUser = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userDoc.exists()) {
+        setUser(userDoc.data() as User);
+      }
+    } catch (err) {
+      console.error("Failed to fetch user:", err);
+    }
   };
 
   const handleLogout = async () => {

@@ -34,6 +34,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
+import Payment from './components/Payment';
 
 // Types
 interface User {
@@ -56,7 +57,7 @@ interface AdOutput {
 }
 
 export default function App() {
-  const [view, setView] = useState<'generator' | 'dashboard' | 'pricing' | 'auth'>('generator');
+  const [view, setView] = useState<'generator' | 'dashboard' | 'pricing' | 'auth' | 'payment'>('generator');
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('adib_token'));
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -255,7 +256,14 @@ export default function App() {
       // Deduct credit after successful generation
       const creditRes = await fetch('/api/use-credit', { 
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          productName: formData.name,
+          category: formData.category
+        })
       });
       const creditData = await creditRes.json();
       if (creditData.success) {
@@ -290,13 +298,13 @@ export default function App() {
               ADIB <span className="text-emerald-600">أديب</span>
             </h1>
           </div>
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-500">
+          <div className="flex items-center gap-4 md:gap-6 text-sm font-medium text-neutral-500">
             <button 
               onClick={() => setView('generator')}
               className={`flex items-center gap-2 transition-colors ${view === 'generator' ? 'text-emerald-600 font-bold' : 'hover:text-emerald-600'}`}
             >
               <PenTool className="w-4 h-4" />
-              مولد الإعلانات
+              <span className="hidden sm:inline">مولد الإعلانات</span>
             </button>
             {user?.isAdmin && (
               <button 
@@ -304,7 +312,7 @@ export default function App() {
                 className={`flex items-center gap-2 transition-colors ${view === 'dashboard' ? 'text-emerald-600 font-bold' : 'hover:text-emerald-600'}`}
               >
                 <BarChart3 className="w-4 h-4" />
-                لوحة التحكم
+                <span className="hidden sm:inline">لوحة التحكم</span>
               </button>
             )}
             
@@ -331,6 +339,13 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 ml-2">
+                  <button 
+                    onClick={fetchUser}
+                    className="p-2 text-neutral-400 hover:text-emerald-600 transition-colors"
+                    title="تحديث البيانات"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
                   <div className="w-8 h-8 bg-neutral-200 rounded-full flex items-center justify-center">
                     <UserIcon className="w-4 h-4 text-neutral-500" />
                   </div>
@@ -359,7 +374,9 @@ export default function App() {
         {view === 'auth' ? (
           <Auth onAuthSuccess={handleAuthSuccess} />
         ) : view === 'dashboard' && user?.isAdmin ? (
-          <Dashboard />
+          <Dashboard setView={setView} />
+        ) : view === 'payment' ? (
+          <Payment onBack={() => setView('pricing')} userEmail={user?.email || ''} />
         ) : view === 'pricing' ? (
           <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-4">
@@ -398,7 +415,7 @@ export default function App() {
                   <h3 className="text-xl font-bold text-neutral-900">الخطة الاحترافية (Pro)</h3>
                   <p className="text-neutral-400 text-sm">للمحترفين والوكالات</p>
                 </div>
-                <div className="text-4xl font-display font-bold text-neutral-900">20 DH <span className="text-sm font-normal text-neutral-400">/ شهر</span></div>
+                <div className="text-4xl font-display font-bold text-neutral-900">20 DH <span className="text-sm font-normal text-neutral-400">لمرة واحدة</span></div>
                 <ul className="space-y-4">
                   <li className="flex items-center gap-3 text-sm text-neutral-600 font-bold">
                     <ZapIcon className="w-4 h-4 text-amber-500" /> رصيد غير محدود (Unlimited)
@@ -414,11 +431,10 @@ export default function App() {
                   </li>
                 </ul>
                 <button 
-                  onClick={upgradeToPro}
-                  disabled={loading}
+                  onClick={() => setView('payment')}
                   className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
                 >
-                  {loading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : 'اشترك دابا بـ 20 درهم'}
+                  اشترك دابا بـ 20 درهم
                 </button>
               </div>
             </div>

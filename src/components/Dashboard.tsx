@@ -124,6 +124,10 @@ export default function Dashboard({ setView }: { setView: (v: string) => void })
   }, []);
 
   const fetchData = async () => {
+    if (!db) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // Fetch Users

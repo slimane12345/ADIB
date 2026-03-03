@@ -21,6 +21,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth) {
+      setError("إعدادات Firebase مفقودة. يرجى التأكد من ضبط المتغيرات في Vercel وإعادة النشر (Redeploy).");
+      return;
+    }
     setLoading(true);
     setError(null);
 

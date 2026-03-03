@@ -119,7 +119,7 @@ export default function App() {
   };
 
   const fetchUser = async () => {
-    if (!auth.currentUser) return;
+    if (!auth?.currentUser || !db) return;
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (userDoc.exists()) {
@@ -137,7 +137,7 @@ export default function App() {
   };
 
   const upgradeToPro = async () => {
-    if (!auth.currentUser) return;
+    if (!auth?.currentUser || !db) return;
     setLoading(true);
     try {
       const userRef = doc(db, 'users', auth.currentUser.uid);
@@ -284,7 +284,7 @@ export default function App() {
       setOutputs(Array.isArray(result) ? result : [result]);
 
       // Deduct credit and save activity in Firestore
-      if (auth.currentUser) {
+      if (auth?.currentUser && db) {
         const userRef = doc(db, 'users', auth.currentUser.uid);
         
         if (!user?.isPro) {

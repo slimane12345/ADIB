@@ -33,6 +33,7 @@ export default function Payment({ onBack, userEmail }: PaymentProps) {
 
   React.useEffect(() => {
     const fetchSettings = async () => {
+      if (!db) return;
       try {
         const settingsDoc = await getDoc(doc(db, 'settings', 'payment'));
         if (settingsDoc.exists()) {
@@ -52,7 +53,7 @@ export default function Payment({ onBack, userEmail }: PaymentProps) {
   };
 
   const handleSubmit = async () => {
-    if (!auth.currentUser) return;
+    if (!auth?.currentUser || !db) return;
 
     setIsSubmitting(true);
     try {
